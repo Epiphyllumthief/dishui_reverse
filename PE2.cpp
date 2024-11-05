@@ -14,18 +14,18 @@ LPVOID Get_PE(){
 	FILE* fp;
 	LPVOID pFileBuffer = NULL;
 	//fp = fopen("C://Windows//notepad.exe","rb");
-	fp =  fopen("F://notepad.exe","rb");
+	fp =  fopen("F://notepad_new5.exe","rb");
     int F_size = Fsize(fp);
 	pFileBuffer = malloc(F_size);
 	if(!pFileBuffer){
-		printf("分配内存空间失败!\n");
+		printf("malloc failed!\n");
 		fclose(fp); 
 		exit(0);
 	}
 	
 	size_t read = fread(pFileBuffer,F_size,1,fp);
 	if(!read){
-		printf("读取文件失败\n"); 
+		printf("open file fail\n"); 
 		fclose(fp);
 		exit(0);
     }

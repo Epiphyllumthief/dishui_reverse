@@ -86,6 +86,76 @@ DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer
     return pOptionHeader->SizeOfImage;
 }
 
+LPVOID ADDSection(LPVOID pImageBuffer){
+    PIMAGE_DOS_HEADER pDos_header = NULL;
+	PIMAGE_NT_HEADERS pNT_header = NULL;
+	PIMAGE_FILE_HEADER pPE_header = NULL;
+	PIMAGE_OPTIONAL_HEADER32 pOption_header = NULL;
+	PIMAGE_SECTION_HEADER pSection_header = NULL;
+	PIMAGE_SECTION_HEADER pLastSection_header = NULL;
+	PIMAGE_SECTION_HEADER pNewSection_header = NULL;
+	LPVOID pFirstSection_header = NULL;
+	BOOL flag = false;
+ 
+	//算出ImageBuffer中的dos头nt头pe头节表地址
+	pDos_header = (PIMAGE_DOS_HEADER)pImageBuffer;
+	pNT_header = (PIMAGE_NT_HEADERS)((DWORD)pDos_header + pDos_header->e_lfanew);
+	pPE_header = (PIMAGE_FILE_HEADER)((DWORD)pNT_header + 4);
+	pOption_header = (PIMAGE_OPTIONAL_HEADER32)((DWORD)pPE_header + IMAGE_SIZEOF_FILE_HEADER);
+	pFirstSection_header = (PIMAGE_SECTION_HEADER)((DWORD)pOption_header + pPE_header->SizeOfOptionalHeader);
+	pSection_header = (PIMAGE_SECTION_HEADER)((DWORD)pOption_header + pPE_header->SizeOfOptionalHeader);
+    LPVOID pLastDos = LPVOID((DWORD)pImageBuffer + sizeof(IMAGE_DOS_HEADER));
+
+    for(int i = 0;i < pPE_header->NumberOfSections; i++,pSection_header++);
+    pLastSection_header = pSection_header;
+    pNewSection_header = pSection_header + 1;
+    PBYTE pTemp = (PBYTE)pNewSection_header;
+    if((DWORD)pImageBuffer + pOption_header->SizeOfHeaders - (DWORD)pNewSection_header >= 2*IMAGE_SIZEOF_FILE_HEADER){
+       /* for(int i = 0; i < 80 ;i++,pTemp++){
+            if(*pTemp){
+               // printf("need to move header\n");
+                flag = TRUE;
+                break;
+            }
+        }*/
+    }else {
+        flag = TRUE;
+    }
+
+    if(flag){
+        printf("need to move header\n");
+        memcpy(pLastDos, pNT_header, (DWORD)pNewSection_header - (DWORD)pNT_header);
+        pDos_header->e_lfanew = sizeof(IMAGE_DOS_HEADER);
+        pNT_header = (PIMAGE_NT_HEADERS)((DWORD)pDos_header + pDos_header->e_lfanew);
+	    pPE_header = (PIMAGE_FILE_HEADER)((DWORD)pNT_header + 4);
+	    pOption_header = (PIMAGE_OPTIONAL_HEADER32)((DWORD)pPE_header + IMAGE_SIZEOF_FILE_HEADER);
+	    pFirstSection_header = (PIMAGE_SECTION_HEADER)((DWORD)pOption_header + pPE_header->SizeOfOptionalHeader);
+	    pSection_header = (PIMAGE_SECTION_HEADER)((DWORD)pOption_header + pPE_header->SizeOfOptionalHeader);
+        for(int i = 0;i < pPE_header->NumberOfSections; i++,pSection_header++){
+            printf("%s\n",pSection_header->Name);
+        }
+        pLastSection_header = pSection_header;
+        //pNewSection_header = pSection_header + 1;
+        LPVOID pTemp = (LPVOID)((DWORD)pLastSection_header);
+        memset(pLastSection_header,0,IMAGE_SIZEOF_SECTION_HEADER*3);
+    }
+    ++pPE_header->NumberOfSections;
+    pOption_header->SizeOfImage = (DWORD)pOption_header->SizeOfImage + 0x1000;
+    memcpy(pLastSection_header, pFirstSection_header,IMAGE_SIZEOF_SECTION_HEADER);
+    strcpy((char*)pLastSection_header->Name, (char*)".tttt");
+    pLastSection_header->Misc.VirtualSize = pOption_header->SectionAlignment;
+    pSection_header--;
+    DWORD RawSize = pSection_header->SizeOfRawData;
+    printf("RawSize: 0x%x",RawSize);
+    for(int i=1;RawSize % pOption_header->SectionAlignment != 0;i++,RawSize++);
+    printf("pSection_header->VirtualAddress RawSize: 0x%x 0x%x\n",pSection_header->VirtualAddress ,RawSize);
+    pLastSection_header->VirtualAddress = pSection_header->VirtualAddress + RawSize;
+    pLastSection_header->SizeOfRawData = pOption_header->SectionAlignment;
+    pLastSection_header->PointerToRawData = pSection_header->PointerToRawData + pSection_header->SizeOfRawData;
+    printf("success add section\n");
+    return pImageBuffer;
+}
+
 DWORD CopyImageBufferToNewBuffer(IN LPVOID pImageBuffer,OUT LPVOID* pNewBuffer){
     PIMAGE_DOS_HEADER pDosHeader = NULL;
     PIMAGE_NT_HEADERS pNTHeader = NULL;
@@ -191,6 +261,7 @@ void init(){
         printf("pImageBuffer-address--%x\r\n",&pImageBuffer);
         printf("Size    --%x\r\n",Size);
     }
+    pImageBuffer = ADDSection(pImageBuffer);
 
     Size = CopyImageBufferToNewBuffer(pImageBuffer,&pNewBuffer);
     if (!pNewBuffer){
@@ -202,7 +273,7 @@ void init(){
     else{
         printf("Size    --%x\r\n",Size);
     }    
-    flag = MemeryToFile(pNewBuffer,Size,"F://notepad_new.exe");
+    flag = MemeryToFile(pNewBuffer,Size,"F://notepad_new5.exe");
     if(flag){
         printf("存盘成功!\n");
         return ;

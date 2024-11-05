@@ -8,7 +8,7 @@ int Fsize(FILE *fp){
 	int size = ftell(fp);
 	fseek(fp,0,SEEK_SET);
 	return size;
-}
+}//0x7B49-400 = 7749  0x1008749
 
 LPVOID Get_PE(){
 	FILE* fp;

@@ -2,7 +2,15 @@
 #include<iostream>
 #include<windows.h>
 #include<winnt.h> 
-
+#define ShellCode_Len 0x12
+#define MessageBoxAdder 0x769CAC60
+//0x1008750 0x7453250B
+BYTE ShellCode[]=
+{
+0x6A,00,0x6A,00,0x6A,00,0x6A,00,
+0xE8,00,00,00,00,
+0xE9,00,00,00,00
+};
 int Fsize(FILE *fp){
     fseek(fp,0,SEEK_END);
     int size = ftell(fp);
@@ -86,6 +94,87 @@ DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer
     return pOptionHeader->SizeOfImage;
 }
 
+LPVOID ShellCode_insert(LPVOID pImageBuffer){
+    PIMAGE_DOS_HEADER pDosHeader = NULL;
+    PIMAGE_NT_HEADERS pNTHeader = NULL;
+    PIMAGE_FILE_HEADER pPEHeader = NULL;
+    PIMAGE_OPTIONAL_HEADER32 pOptionHeader = NULL;
+    PIMAGE_SECTION_HEADER pSectionHeader = NULL;
+    DWORD* ShellCodeBegin = NULL;
+    printf("pImageBuffer: 0x%x\n",pImageBuffer);
+    if(!pImageBuffer)
+    {
+        printf("pImageBuffer Open Failed\n");
+        return 0;
+    }
+
+    pDosHeader = (PIMAGE_DOS_HEADER)pImageBuffer;
+    pNTHeader = (PIMAGE_NT_HEADERS)((DWORD)pImageBuffer+pDosHeader->e_lfanew);
+    pPEHeader = (PIMAGE_FILE_HEADER)(((DWORD)pNTHeader)+4);
+    pOptionHeader = (PIMAGE_OPTIONAL_HEADER32)(((DWORD)pPEHeader)+20);
+    pSectionHeader = (PIMAGE_SECTION_HEADER)((DWORD)pOptionHeader+pPEHeader->SizeOfOptionalHeader);
+
+    if(pSectionHeader->SizeOfRawData - pSectionHeader->Misc.VirtualSize < ShellCode_Len){
+        printf("节表空间不足\n");
+        free(pImageBuffer);
+        return 0;
+    }
+
+    if(pOptionHeader->SectionAlignment == pOptionHeader->FileAlignment){
+        printf("SectionAlignment == FileAlignment\n");
+        ShellCodeBegin = (DWORD*)(pSectionHeader->VirtualAddress+pSectionHeader->Misc.VirtualSize+(DWORD)pImageBuffer);
+        if(!memcpy(ShellCodeBegin,ShellCode,ShellCode_Len)){
+            printf("Copy ShellCodeBegin Failed\n");
+            return 0;
+        }
+        DWORD Calladdr = (DWORD)((DWORD)MessageBoxAdder-((DWORD)pOptionHeader->ImageBase+(DWORD)ShellCodeBegin-(DWORD)pImageBuffer+0xD));
+        if(!Calladdr){
+            printf("set call failed\n");
+            return 0;
+        }
+        *(DWORD*)((BYTE*)ShellCodeBegin + 0x9) = Calladdr;
+        printf("set call success!\n");
+
+        DWORD JMPaddr = (DWORD)((DWORD)pOptionHeader->AddressOfEntryPoint-((DWORD)ShellCodeBegin+ShellCode_Len-(DWORD)pImageBuffer));
+        if(!JMPaddr){
+            printf("set jmp failed\n");
+            return 0;
+        }
+        *(DWORD*)((BYTE*)ShellCodeBegin + 0xE) = JMPaddr;
+        printf("set jmp success!\n");
+        pOptionHeader->AddressOfEntryPoint = (DWORD)ShellCodeBegin -(DWORD)pImageBuffer;
+        printf("OEP=%x\n",pOptionHeader->AddressOfEntryPoint);
+        printf("OEP ok\n");
+    }else {
+        printf("SectionAlignment != FileAlignment\n");
+        pSectionHeader=(PIMAGE_SECTION_HEADER)((DWORD)pOptionHeader+pPEHeader->SizeOfOptionalHeader);
+        ShellCodeBegin = (DWORD*)(pSectionHeader->VirtualAddress+pSectionHeader->Misc.VirtualSize+(DWORD)pImageBuffer);
+        printf("ShellCodeBegin 0x%X:\n",ShellCodeBegin);
+        if(!memcpy(ShellCodeBegin,ShellCode,ShellCode_Len)){
+            printf("Copy ShellCodeBegin Failed\n");
+            return 0;
+        }
+        DWORD Calladdr = (DWORD)((DWORD)MessageBoxAdder-((DWORD)pOptionHeader->ImageBase+(DWORD)ShellCodeBegin-(DWORD)pImageBuffer+0xD));
+        if(!Calladdr){
+            printf("set call failed\n");
+            return 0;
+        }
+        *(DWORD*)((BYTE*)ShellCodeBegin + 0x9) = Calladdr;
+        printf("set call success!\n");
+
+        DWORD JMPaddr = (DWORD)((DWORD)pOptionHeader->AddressOfEntryPoint-((DWORD)ShellCodeBegin+ShellCode_Len-(DWORD)pImageBuffer));
+        if(!JMPaddr){
+            printf("set jmp failed\n");
+            return 0;
+        }
+        *(DWORD*)((BYTE*)ShellCodeBegin + 0xE) = JMPaddr;
+        printf("set jmp success!\n");
+        pOptionHeader->AddressOfEntryPoint = (DWORD)ShellCodeBegin -(DWORD)pImageBuffer;
+        printf("OEP=%x\n",pOptionHeader->AddressOfEntryPoint);
+        printf("OEP ok\n");
+    }return pImageBuffer;
+}
+
 DWORD CopyImageBufferToNewBuffer(IN LPVOID pImageBuffer,OUT LPVOID* pNewBuffer){
     PIMAGE_DOS_HEADER pDosHeader = NULL;
     PIMAGE_NT_HEADERS pNTHeader = NULL;
@@ -125,6 +214,8 @@ DWORD CopyImageBufferToNewBuffer(IN LPVOID pImageBuffer,OUT LPVOID* pNewBuffer){
 
     for(int i=0;i<pPEHeader->NumberOfSections;i++)
         sizeOfFile += pSectionHeader[i].SizeOfRawData;
+    printf("0x%x sizeoffile!\n",sizeOfFile);
+    sizeOfFile+=0x1000;
     printf("0x%x sizeoffile!\n",sizeOfFile);
     pTempNewBuffer = malloc(sizeOfFile);
     if(!pTempNewBuffer){
@@ -191,7 +282,7 @@ void init(){
         printf("pImageBuffer-address--%x\r\n",&pImageBuffer);
         printf("Size    --%x\r\n",Size);
     }
-
+    pImageBuffer=ShellCode_insert(pImageBuffer);
     Size = CopyImageBufferToNewBuffer(pImageBuffer,&pNewBuffer);
     if (!pNewBuffer){
         printf("ImageBuffer->NewBuffer Failed\r\n");
@@ -202,7 +293,7 @@ void init(){
     else{
         printf("Size    --%x\r\n",Size);
     }    
-    flag = MemeryToFile(pNewBuffer,Size,"F://notepad_new.exe");
+    flag = MemeryToFile(pNewBuffer,Size,"F://notepad3_new.exe");
     if(flag){
         printf("存盘成功!\n");
         return ;
